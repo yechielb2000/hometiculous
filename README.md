@@ -1,1 +1,1 @@
-# home-manager
+# hometiculous
