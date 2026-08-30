@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Utility functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getHousehold(householdId) {
+      return get(/databases/$(database)/documents/households/$(householdId)).data;
+    }
+
+    function isMember(householdId) {
+      return isAuthenticated() && request.auth.uid in getHousehold(householdId).members;
+    }
+
+    function isAdmin(householdId) {
+      return isAuthenticated() && request.auth.uid in getHousehold(householdId).admins;
+    }
+
+    // Household collection rules
+    match /households/{householdId} {
+      allow read: if isMember(householdId);
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin(householdId);
+
+      // User profiles in household
+      match /users/{userId} {
+        allow read: if isMember(householdId);
+        allow write: if isMember(householdId) && (request.auth.uid == userId || isAdmin(householdId));
+      }
+
+      // Admin-only invitation management
+      match /invitations/{inviteId} {
+        allow read, write: if isAdmin(householdId);
+      }
+
+      // Periodic templates (admin only for write)
+      match /periodic_templates/{tplId} {
+        allow read: if isMember(householdId);
+        allow create, update, delete: if isAdmin(householdId);
+      }
+
+      // Chores (members can read and update, admins can delete)
+      match /chores/{choreId} {
+        allow read: if isMember(householdId);
+        allow create, delete: if isAdmin(householdId);
+        allow update: if isMember(householdId);
+      }
+
+      // Shopping list (all members can read and write)
+      match /shopping_items/{itemId} {
+        allow read, write: if isMember(householdId);
+      }
+
+      // Expenses (all members can read and write)
+      match /expenses/{expenseId} {
+        allow read, write: if isMember(householdId);
+      }
+
+      // Documents (all members can read and write)
+      match /documents/{docId} {
+        allow read, write: if isMember(householdId);
+      }
+
+      // Catch-all for other subcollections
+      match /{allSubcollections=**} {
+        allow read, write: if isMember(householdId);
+      }
+    }
+
+    // Root-level users collection (for initial user profile setup)
+    match /users/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+    }
+  }
+}
